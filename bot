@@ -1,0 +1,221 @@
+import random
+import asyncio
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+
+
+def dic(filename):
+    with open(filename, encoding="utf-8") as f:
+        return set(word.strip().lower() for word in f if word.strip())
+
+
+def defin(filename):
+    with open(filename, encoding="utf-8") as f:
+        definitions = {}
+        for line in f:
+            if line.strip():
+                k = line.strip().split(" — ", 1)
+                if len(k) == 2:
+                    word, definition = k
+                    definitions[word.lower()] = definition.strip()
+        return definitions
+
+
+ruswords = dic("C:/Users/1/Documents/word_rus_min.txt")
+
+categories = {
+    "имя": ["гарри", "рон", "гермиона", "хагрид", "джинни", "сириус", "фред", "невилл", "дадли", "перси",
+            "джордж", "вернон", "драко", "флер", "полумна", "чжоу", "петунья", "билл", "седрик", "беллатриса",
+            "северус", "миртл", "парвати", "дин", "лили", "симус", "крэбб", "кэти", "анджелина", "эрни", "кингсли",
+            "артур", "лаванда", "наземникус", "рита", "люциус", "молли", "джеймс", "хвост", "альбус", "ксенофилиус",
+            "нарцисса", "финеас", "пэнси", "мюриэль", "аберфорт", "корнелиус", "стэн", "марджори", "римус", "батильда",
+            "барти", "долорес", "минерва", "оливер", "регулус", "розмерта", "колин", "златопуст", "чарли",
+            "гораций", "падма", "питер", "виктор", "нимфадора", "олимпия"],
+    "фамилия": ["дамблдор", "уизли", "снейп", "поттер", "малфой", "макгонагалл", "амбридж", "фадж", "грюм", "слизнорт",
+                "тонкс", "блэк", "трелони", "крауч", "реддл", "филч", "локонс", "помфри", "крам", "грэйнджер",
+                "вуд", "диггори", "люпин", "скитер", "скримджер", "петтигрю", "дурсль", "каркаров", "квиррелл",
+                "флитвик", "олливандер", "лавгуд", "долгопупс", "яксли", "джордан", "фигг", "делакур",
+                "лестрейндж", "маклагген", "финниган", "чанг", "гойл", "крэбб"],
+    "волшебное существо или домашний любимец": ["добби", "кикимер", "винки", "дементор", "эльф", "пивз", "сова",
+                                                "букля",
+                                                "живоглот", "феникс", "крюкохват", "гоблин", "дракон", "короста",
+                                                "клык",
+                                                "норрис", "флоренц", "клювокрыл", "фоукс", "кентавр", "тролль",
+                                                "василиск",
+                                                "гиппогриф", "арагог", "лань", "боггарт", "горгулья", "пушок",
+                                                "нагайна"],
+    "заклинание": ["акцио", "экспеллиармус", "круцио", "алохомора", "империо", "редукто", "редикулус", "люмос",
+                   "левиосо"],
+    "волшебный предмет или просто что-то волшебное": ["палочка", "мантия", "метла", "зелье", "медальон", "кубок",
+                                                      "крестраж", "шляпа", "окклюменция", "вредноскоп", "амортенция",
+                                                      "мандрагора", "маховик", "диадема", "кричалка", "омут", "портрет",
+                                                      "патронус", "пророк", "галеон", "шрам", "метка", "заклятие",
+                                                      "заклинание"],
+    "место или организация": ["хогвартс", "замок", "хогсмид", "азкабан", "гринготтс", "платформа", "дурмстранг",
+                              "министерство", "орден"],
+    "хогвартс: учеба, события и спорт": ["квиддич", "турнир", "снитч", "квоффл", "бладжер", "бал", "зельеварение",
+                                         "трансфигурация", "астрономия", "травология", "жаба", "гриффиндор", "слизерин",
+                                         "когтевран", "пуффендуй"],
+    "роль или социальная группа": ["профессор", "волшебник", "магл", "пожиратель", "мародер", "грязнокровка",
+                                   "полукровка"]
+}
+
+hpwords = [word for words in categories.values() for word in words]
+
+definitions = defin("C:/Users/1/Documents/hints.txt")
+
+allwords = ruswords.union(hpwords)
+
+hpwordle = {}
+
+stats = {}
+
+
+def gamestart(user_id):
+    category = random.choice(list(categories.keys()))
+    secretword = random.choice(categories[category])
+    return {
+        "secretword": secretword,
+        "category": category,
+        "attemptsleft": len(secretword) + 1,
+        "length": len(secretword),
+        "guesses": []
+    }
+
+
+def rep(secretword, guess):
+    repletters = [""] * len(secretword)
+    secretletters = list(secretword)
+    guessletters = list(guess)
+
+    for i in range(len(secretword)):
+        if guessletters[i] == secretletters[i]:
+            repletters[i] = f"🟩{guessletters[i]}"
+            secretletters[i] = None
+            guessletters[i] = None
+
+    for i in range(len(secretword)):
+        if guessletters[i] is not None:
+            if guessletters[i] in secretletters:
+                repletters[i] = f"🟨{guessletters[i]}"
+                secretletters[secretletters.index(guessletters[i])] = None
+            else:
+                repletters[i] = f"⬜{guessletters[i]}"
+
+    return "".join(repletters)
+
+
+def allowedword(word, length):
+    return len(word) == length and word in allwords
+
+
+def userstats(userid, won):
+    if userid not in stats:
+        stats[userid] = {"hpwordle": 0, "wins": 0, "losses": 0}
+    stats[userid]["hpwordle"] += 1
+    if won:
+        stats[userid]["wins"] += 1
+    else:
+        stats[userid]["losses"] += 1
+
+
+async def start(upd: Update, context: ContextTypes.DEFAULT_TYPE):
+    userid = upd.effective_user.id
+    hpwordle[userid] = gamestart(userid)
+    length = hpwordle[userid]["length"]
+    category = hpwordle[userid]["category"]
+    attempts = hpwordle[userid]["attemptsleft"]
+    await upd.message.reply_text(
+        f"Привет! Мы загадали тебе слово из {length} букв.\n"
+        f"Категория: {category}\n"
+        f"У тебя есть {attempts} попыток. Попробуй угадать."
+    )
+
+
+async def process(upd: Update, context: ContextTypes.DEFAULT_TYPE):
+    userid = upd.effective_user.id
+    usertext = upd.message.text.lower()
+
+    if userid not in hpwordle:
+        await upd.message.reply_text("Чтобы начать игру, отправь команду /start")
+        return
+
+    sgame = hpwordle[userid]
+
+    if not allowedword(usertext, sgame["length"]):
+        await upd.message.reply_text("Такого слова нет в словаре или неправильная длина(")
+        return
+
+    sgame["attemptsleft"] -= 1
+    res = rep(sgame["secretword"], usertext)
+    sgame["guesses"].append((usertext, res))
+
+    if usertext == sgame["secretword"]:
+        userstats(userid, True)
+        await upd.message.reply_text(f"Ураааа! Ты угадал слово: {sgame['secretword']}")
+        del hpwordle[userid]
+        return
+
+    if sgame["attemptsleft"] == 1:
+        definition = definitions.get(sgame["secretword"])
+        if definition:
+            await upd.message.reply_text(f"Подсказка:\n{definition}")
+
+    if sgame["attemptsleft"] == 0:
+        userstats(userid, False)
+        await upd.message.reply_text(f"Попытки закончились(\nЗагаданное слово: {sgame['secretword']}")
+        del hpwordle[userid]
+        return
+
+    await upd.message.reply_text(
+        f"{res}\nУ тебя осталось {sgame['attemptsleft']} попыток\nПопробуй еще раз!"
+    )
+
+
+async def showstats(upd: Update, context: ContextTypes.DEFAULT_TYPE):
+    userid = upd.effective_user.id
+    yourstats = stats.get(userid)
+    if not stats:
+        await  upd.message.reply_text("Ты еще не играл. Попробуй сейчас!")
+    else:
+        hpwordle = yourstats["hpwordle"]
+        wins = yourstats["wins"]
+        losses = yourstats["losses"]
+        percent = (wins / hpwordle) * 100 if hpwordle > 0 else 0
+        await upd.message.reply_text(
+            f"Твоя статистика:\n"
+            f"Всего игр: {hpwordle}\n"
+            f"Угадано: {wins}\n"
+            f"Не угадано: {losses}\n"
+            f"Процент угадываний: {percent:.1f}%"
+
+        )
+
+
+async def helppp(upd: Update, context: ContextTypes.DEFAULT_TYPE):
+    await upd.message.reply_text(
+        "Команды:\n"
+        "/start - начать новую игру\n"
+        "/stats - твоя статистика\n"
+    )
+
+
+from telegram import BotCommand
+
+
+async def setup_commands(app):
+    await app.bot.set_my_commands([
+        BotCommand("start", "Начать новую игру"),
+        BotCommand("stats", "Показать статистику")
+    ])
+
+
+TOKEN = "7993255113:AAFjs_EHDzQ-V29p3nXU9SjxsAcxPFsv0F8"
+app = ApplicationBuilder().token(TOKEN).post_init(setup_commands).build()
+
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("stats", showstats))
+app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), process))
+
+print("Бот работает!")
+app.run_polling()
